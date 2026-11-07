@@ -1,229 +1,214 @@
-from datetime import datetime
-from enum import Enum
-from typing import Optional
+# 🎫 Sistema de Chamados
 
-import sqlite3
-from contextlib import contextmanager
+Sistema de gerenciamento de chamados (tickets) de suporte, desenvolvido em **Python** com banco de dados **SQLite** e executado direto no terminal. Permite registrar problemas, acompanhar o andamento de cada um e manter todo o histórico salvo localmente.
 
-from fastapi import FastAPI, HTTPException, Query
-from pydantic import BaseModel, Field
+O projeto foi criado com fins de estudo, com foco em boas práticas básicas: código organizado em funções, validação de dados e proteção contra SQL Injection.
 
+---
 
-DB_NAME = "chamados.db"
+## 📋 Sumário
 
-app = FastAPI(
-    title="Sistema de Chamados de TI",
-    description="API simples para abertura, consulta, atualização e exclusão de chamados de suporte.",
-    version="1.0.0",
-)
+- [Funcionalidades](#-funcionalidades)
+- [Tecnologias utilizadas](#-tecnologias-utilizadas)
+- [Estrutura do projeto](#-estrutura-do-projeto)
+- [Pré-requisitos](#-pré-requisitos)
+- [Como executar](#-como-executar)
+- [Como usar](#-como-usar)
+- [Banco de dados](#-banco-de-dados)
+- [Como o código funciona](#-como-o-código-funciona)
+- [Boas práticas aplicadas](#-boas-práticas-aplicadas)
+- [Melhorias futuras](#-melhorias-futuras)
+- [Autora](#-autora)
 
+---
 
-class Status(str, Enum):
-    aberto = "Aberto"
-    em_andamento = "Em andamento"
-    resolvido = "Resolvido"
-    fechado = "Fechado"
+## ✨ Funcionalidades
 
+- **Abrir chamado**: registra título, descrição, nome do solicitante e prioridade (Baixa, Média ou Alta). A data e a hora de abertura são salvas automaticamente.
+- **Listar chamados**: exibe todos os chamados, do mais recente para o mais antigo, com número, título, solicitante, prioridade, status e data.
+- **Atualizar status**: altera o andamento de um chamado entre **Aberto**, **Em andamento** e **Fechado**.
+- **Menu interativo**: navegação simples por números, que se repete até o usuário escolher sair.
+- **Validações**: campos obrigatórios, número de chamado válido e tratamento de opções inválidas, evitando que o programa quebre.
+- **Persistência de dados**: os chamados ficam salvos em um arquivo local, então não se perdem ao fechar o programa.
 
-class Prioridade(str, Enum):
-    baixa = "Baixa"
-    media = "Média"
-    alta = "Alta"
+---
 
+## 🛠 Tecnologias utilizadas
 
-class ChamadoCreate(BaseModel):
-    solicitante: str = Field(min_length=2, max_length=100)
-    email: str = Field(min_length=5, max_length=150)
-    titulo: str = Field(min_length=3, max_length=150)
-    descricao: str = Field(min_length=5, max_length=2000)
-    categoria: str = Field(min_length=2, max_length=80)
-    prioridade: Prioridade = Prioridade.media
+| Tecnologia | Uso |
+|---|---|
+| **Python 3** | Linguagem principal do projeto |
+| **SQLite** (`sqlite3`) | Banco de dados local, já incluído no Python |
+| **datetime** | Registro automático da data e hora de abertura |
+| **Git e GitHub** | Controle de versão e hospedagem do código |
 
+Não é necessário instalar nenhuma biblioteca externa.
 
-class ChamadoUpdate(BaseModel):
-    status: Optional[Status] = None
-    prioridade: Optional[Prioridade] = None
-    tecnico_responsavel: Optional[str] = Field(default=None, max_length=100)
-    solucao: Optional[str] = Field(default=None, max_length=2000)
+---
 
+## 📁 Estrutura do projeto
 
-def conectar():
-    """Abre conexão com o banco SQLite."""
-    connection = sqlite3.connect(DB_NAME)
-    connection.row_factory = sqlite3.Row
-    return connection
+```
+Sistema_Chamados/
+│
+├── sistema_chamados.py   # Código principal do sistema
+├── README.md             # Documentação do projeto
+├── .gitignore            # Arquivos ignorados pelo Git
+└── chamados.db           # Banco de dados (criado automaticamente, não é enviado ao GitHub)
+```
 
+---
 
-def inicializar_banco():
-    with conectar() as conn:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS chamados (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                solicitante TEXT NOT NULL,
-                email TEXT NOT NULL,
-                titulo TEXT NOT NULL,
-                descricao TEXT NOT NULL,
-                categoria TEXT NOT NULL,
-                prioridade TEXT NOT NULL,
-                status TEXT NOT NULL DEFAULT 'Aberto',
-                tecnico_responsavel TEXT,
-                solucao TEXT,
-                criado_em TEXT NOT NULL,
-                atualizado_em TEXT NOT NULL
-            )
-            """
-        )
-        conn.commit()
+## ✅ Pré-requisitos
 
+- **Python 3.8 ou superior** instalado.
 
-@app.on_event("startup")
-def startup():
-    inicializar_banco()
+Para verificar, rode no terminal:
 
+```bash
+python --version
+```
 
-def chamado_dict(row):
-    return dict(row) if row else None
+Caso não esteja instalado, baixe em [python.org](https://www.python.org/downloads/).
 
+---
 
-@app.get("/")
-def inicio():
-    return {
-        "mensagem": "Bem-vindo ao Sistema de Chamados de TI!",
-        "documentacao": "/docs",
-        "rotas_principais": [
-            "POST /chamados",
-            "GET /chamados",
-            "GET /chamados/{id}",
-            "PATCH /chamados/{id}",
-            "DELETE /chamados/{id}",
-        ],
-    }
+## 🚀 Como executar
 
+**1. Clone o repositório**
 
-@app.post("/chamados", status_code=201)
-def criar_chamado(dados: ChamadoCreate):
-    agora = datetime.now().isoformat(timespec="seconds")
-    with conectar() as conn:
-        cursor = conn.execute(
-            """
-            INSERT INTO chamados
-            (solicitante, email, titulo, descricao, categoria, prioridade,
-             status, criado_em, atualizado_em)
-            VALUES (?, ?, ?, ?, ?, ?, 'Aberto', ?, ?)
-            """,
-            (
-                dados.solicitante,
-                dados.email,
-                dados.titulo,
-                dados.descricao,
-                dados.categoria,
-                dados.prioridade.value,
-                agora,
-                agora,
-            ),
-        )
-        conn.commit()
-        row = conn.execute(
-            "SELECT * FROM chamados WHERE id = ?", (cursor.lastrowid,)
-        ).fetchone()
-    return chamado_dict(row)
+```bash
+git clone https://github.com/SEU-USUARIO/sistema-chamados.git
+```
 
+**2. Entre na pasta do projeto**
 
-@app.get("/chamados")
-def listar_chamados(
-    status: Optional[Status] = Query(default=None),
-    prioridade: Optional[Prioridade] = Query(default=None),
-    categoria: Optional[str] = Query(default=None),
-):
-    query = "SELECT * FROM chamados WHERE 1=1"
-    params = []
+```bash
+cd sistema-chamados
+```
 
-    if status:
-        query += " AND status = ?"
-        params.append(status.value)
-    if prioridade:
-        query += " AND prioridade = ?"
-        params.append(prioridade.value)
-    if categoria:
-        query += " AND categoria LIKE ?"
-        params.append(f"%{categoria}%")
+**3. Execute o sistema**
 
-    query += " ORDER BY criado_em DESC"
+```bash
+python sistema_chamados.py
+```
 
-    with conectar() as conn:
-        rows = conn.execute(query, params).fetchall()
-    return [chamado_dict(row) for row in rows]
+Na primeira execução, o arquivo `chamados.db` é criado automaticamente.
 
+---
 
-@app.get("/chamados/{chamado_id}")
-def consultar_chamado(chamado_id: int):
-    with conectar() as conn:
-        row = conn.execute(
-            "SELECT * FROM chamados WHERE id = ?", (chamado_id,)
-        ).fetchone()
+## 💻 Como usar
 
-    if not row:
-        raise HTTPException(status_code=404, detail="Chamado não encontrado.")
-    return chamado_dict(row)
+Ao iniciar, o menu principal é exibido:
 
+```
+===== SISTEMA DE CHAMADOS =====
+1 - Abrir chamado
+2 - Listar chamados
+3 - Atualizar status
+0 - Sair
+Escolha uma opção:
+```
 
-@app.patch("/chamados/{chamado_id}")
-def atualizar_chamado(chamado_id: int, dados: ChamadoUpdate):
-    atualizacoes = dados.model_dump(exclude_unset=True)
+### 1. Abrir chamado
 
-    if not atualizacoes:
-        raise HTTPException(
-            status_code=400,
-            detail="Informe pelo menos um campo para atualizar.",
-        )
+Informe o título, a descrição, seu nome e a prioridade:
 
-    # Converte os enums para seus valores textuais antes de salvar.
-    for campo, valor in list(atualizacoes.items()):
-        if isinstance(valor, Enum):
-            atualizacoes[campo] = valor.value
+```
+--- NOVO CHAMADO ---
+Título: Internet fora do ar
+Descrição: Sem acesso à rede desde o início da manhã
+Seu nome: Maria
+Prioridade: 1 - Baixa | 2 - Média | 3 - Alta
+Escolha (1, 2 ou 3): 3
+Chamado #1 aberto com sucesso!
+```
 
-    atualizacoes["atualizado_em"] = datetime.now().isoformat(timespec="seconds")
+### 2. Listar chamados
 
-    campos_permitidos = {
-        "status",
-        "prioridade",
-        "tecnico_responsavel",
-        "solucao",
-        "atualizado_em",
-    }
-    campos = [campo for campo in atualizacoes if campo in campos_permitidos]
-    set_clause = ", ".join(f"{campo} = ?" for campo in campos)
-    valores = [atualizacoes[campo] for campo in campos]
+```
+--- LISTA DE CHAMADOS ---
+#1 | Internet fora do ar
+    Solicitante: Maria | Prioridade: Alta
+    Status: Aberto | Aberto em: 07/11/2026 14:30
+----------------------------------------
+```
 
-    with conectar() as conn:
-        existente = conn.execute(
-            "SELECT id FROM chamados WHERE id = ?", (chamado_id,)
-        ).fetchone()
-        if not existente:
-            raise HTTPException(status_code=404, detail="Chamado não encontrado.")
+### 3. Atualizar status
 
-        conn.execute(
-            f"UPDATE chamados SET {set_clause} WHERE id = ?",
-            valores + [chamado_id],
-        )
-        conn.commit()
-        row = conn.execute(
-            "SELECT * FROM chamados WHERE id = ?", (chamado_id,)
-        ).fetchone()
+Escolha o número do chamado e o novo status:
 
-    return chamado_dict(row)
+```
+Novo status: 1 - Aberto | 2 - Em andamento | 3 - Fechado
+Escolha (1, 2 ou 3): 2
+Chamado #1 atualizado para: Em andamento
+```
 
+### 0. Sair
 
-@app.delete("/chamados/{chamado_id}")
-def excluir_chamado(chamado_id: int):
-    with conectar() as conn:
-        cursor = conn.execute(
-            "DELETE FROM chamados WHERE id = ?", (chamado_id,)
-        )
-        conn.commit()
+Encerra o programa.
 
-    if cursor.rowcount == 0:
-        raise HTTPException(status_code=404, detail="Chamado não encontrado.")
+---
 
-    return {"mensagem": f"Chamado {chamado_id} excluído com sucesso."}
+## 🗄 Banco de dados
+
+Os dados ficam na tabela `chamados`, dentro do arquivo `chamados.db`:
+
+| Coluna | Tipo | Descrição |
+|---|---|---|
+| `id` | INTEGER | Número único do chamado (gerado automaticamente) |
+| `titulo` | TEXT | Resumo do problema |
+| `descricao` | TEXT | Detalhes do problema |
+| `solicitante` | TEXT | Nome de quem abriu o chamado |
+| `prioridade` | TEXT | Baixa, Média ou Alta |
+| `status` | TEXT | Aberto, Em andamento ou Fechado (padrão: Aberto) |
+| `data_abertura` | TEXT | Data e hora de criação (formato `dd/mm/aaaa hh:mm`) |
+
+---
+
+## 🧠 Como o código funciona
+
+O arquivo `sistema_chamados.py` é dividido em funções, cada uma com uma responsabilidade:
+
+| Função | O que faz |
+|---|---|
+| `conectar()` | Abre a conexão com o banco `chamados.db` |
+| `criar_tabela()` | Cria a tabela de chamados, caso ainda não exista |
+| `abrir_chamado()` | Coleta os dados, valida e insere um novo chamado |
+| `listar_chamados()` | Busca e exibe todos os chamados |
+| `atualizar_status()` | Localiza um chamado pelo número e altera seu status |
+| `menu()` | Exibe o menu em laço e chama as demais funções |
+
+---
+
+## 🔒 Boas práticas aplicadas
+
+- **Consultas parametrizadas** (`?`): os dados digitados pelo usuário nunca são colocados diretamente no comando SQL, o que protege contra **SQL Injection**.
+- **Validação de entrada**: campos vazios e números inválidos são tratados antes de chegar ao banco.
+- **Código modular**: cada funcionalidade em uma função, facilitando manutenção e reaproveitamento.
+- **`.gitignore`**: o banco de dados com informações dos chamados não é enviado ao repositório.
+- **Conexões fechadas corretamente** após cada operação.
+
+---
+
+## 🔮 Melhorias futuras
+
+- [ ] Ver detalhes completos de um chamado (incluindo a descrição)
+- [ ] Filtrar chamados por status ou prioridade
+- [ ] Buscar chamados por palavra no título
+- [ ] Excluir chamados
+- [ ] Registrar a data de fechamento
+- [ ] Interface gráfica com Tkinter
+- [ ] Versão web com Flask
+
+---
+
+## 👩‍💻 Autora
+
+Desenvolvido por **SEU NOME**.
+
+- GitHub: [@SEU-USUARIO](https://github.com/SEU-USUARIO)
+
+---
+
+⭐ Se este projeto te ajudou, deixe uma estrela no repositório!
