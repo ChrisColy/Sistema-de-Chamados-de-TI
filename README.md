@@ -207,7 +207,7 @@ O arquivo `sistema_chamados.py` é dividido em funções, cada uma com uma respo
 
 Desenvolvido por **SEU NOME**.
 
-- GitHub: [@SEU-USUARIO](https://github.com/SEU-USUARIO)
+- GitHub:https://github.com/ChrisColy
 
 ---
 
